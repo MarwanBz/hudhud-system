@@ -31,7 +31,7 @@ This file captures cross-surface product principles, end-to-end workflows, share
 5. Backend creates shipment and tracking number.
 6. Backend reserves the fixed system shipment fee from the agent's system credit.
 7. Backend creates `received` event.
-8. Backend creates notification log for shipment created.
+8. Backend creates a WhatsApp notification attempt for the receiver customer and an SMS fallback attempt when WhatsApp cannot be used.
 9. Shipment appears in admin dashboard, agent dashboard, and public tracking.
 
 ### Offline Agent Shipment Creation
@@ -66,7 +66,7 @@ This file captures cross-surface product principles, end-to-end workflows, share
 5. App stores outcome and proof photo locally.
 6. Connection returns.
 7. App uploads proof and syncs outcome.
-8. Backend updates status, stores proof, creates event, and triggers notification.
+8. Backend updates status, stores proof, creates event, and triggers WhatsApp-first/SMS-fallback customer messaging.
 9. If the outcome is delivered, backend captures the reserved system shipment fee.
 10. If the shipment is finally closed without delivery, backend releases the reserved fee.
 11. If the shipment is postponed, backend keeps the fee reserved.
@@ -96,6 +96,8 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - Delivery proofs.
 - Mobile sync items.
 - Notification logs.
+- Notification jobs.
+- SMS and WhatsApp notification attempts.
 - Commission records.
 - Agent system credit balances.
 - System credit ledger entries.
@@ -144,6 +146,13 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - Per-agent or per-route dynamic pricing.
 - Advanced accounting settlement.
 - Advanced report builder.
+- Inbound WhatsApp chat.
+- Customer replies or support chat.
+- Campaign or bulk messaging.
+- Customer notification preferences.
+- Admin notification template editor.
+- Per-agent notification templates.
+- Multi-provider notification routing.
 - Multi-provider notification template management.
 - SLA automation.
 - Inventory/warehouse scanning flows.
@@ -158,7 +167,10 @@ The MVP is acceptable when all of the following are true:
 - Driver can view assigned shipments on mobile.
 - Driver can submit delivery, rejection, or postponement outcome with reason/photo and sync later.
 - Public tracking shows safe shipment status and timeline by tracking number.
-- Automated notifications are attempted for key shipment events and logged.
+- WhatsApp-first/SMS-fallback customer messages are attempted for key shipment events and logged.
+- Receiver customer is the required V1 notification recipient.
+- Messaging failures do not block shipment creation, status updates, delivery outcomes, fee capture/release, or proof uploads.
+- Missing or invalid receiver phone creates a failed non-retryable notification log.
 - Backend prevents invalid status transitions.
 - Backend prevents cross-role and cross-user data access.
 - Mobile sync uses idempotency and does not duplicate shipments or outcomes on retry.
@@ -183,7 +195,7 @@ The MVP is acceptable when all of the following are true:
 5. Agent mobile offline shipment creation.
 6. Driver assignment and driver mobile assigned shipment list.
 7. Driver outcome sync with reason and photo proof.
-8. Notifications and notification logs.
+8. WhatsApp/SMS customer messaging, fallback handling, and notification logs.
 9. Analytics APIs and dashboard cards.
 10. Sync exception review and conflict resolution.
 

@@ -205,15 +205,16 @@ The web app is online-first. It should assume an active backend connection and s
 
 **V1 behavior**
 - Admin can view notification logs for shipment events.
-- Each log shows event type, channel, recipient, status, sent time, and failure reason if available.
-- Admin can identify failed notifications.
+- Each log shows event type, channel (`whatsapp` or `sms`), recipient, recipient phone, provider, status, sent time, retry count, and failure reason if available.
+- Admin can filter or inspect failed notifications by shipment, channel, recipient, status, and date.
+- Admin can identify when SMS was used as fallback after WhatsApp failed or was unavailable.
 
 **Why this is needed in V1**
-- Automated notifications are in scope, so operational staff need visibility when they fail.
-- Notification failure should not block shipment state, but it must be visible.
+- WhatsApp and SMS customer messaging are in scope, so operational staff need visibility when they fail.
+- Messaging failure should not block shipment state, but it must be visible.
 
 **Acceptance signal**
-- A simulated provider failure creates a failed notification log without breaking the shipment update.
+- A simulated WhatsApp provider failure creates a failed or fallback notification log without breaking the shipment update.
 
 ## Agent Web Dashboard
 

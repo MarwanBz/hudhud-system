@@ -221,27 +221,55 @@ The backend is the system of record. It must enforce rules that frontend and mob
 **Acceptance signal**
 - Public tracking does not expose proof photo, while admin can view it.
 
-## Notifications
+## Notifications And Messaging
 
-### Feature: Automated Key-Event Notifications
+### Feature: WhatsApp and SMS shipment notifications
 
 **V1 behavior**
-- Send notifications for:
+- Support outbound customer messaging through:
+  - WhatsApp.
+  - SMS.
+- Receiver customer phone is the default V1 recipient.
+- Send customer-facing messages for:
   - Shipment created.
   - Out for delivery.
   - Delivered.
   - Rejected.
   - Postponed.
-- Store notification logs.
-- Retry retryable failures.
-- Do not rollback shipment state when notification fails.
+- Use this flow: shipment event -> notification policy -> notification job/log -> WhatsApp adapter -> SMS fallback when needed.
+- Attempt WhatsApp first.
+- Use SMS fallback when WhatsApp is disabled, unavailable, or permanently fails.
+- Keep provider integration vendor-neutral for V1.
+- Normalize and validate recipient phone numbers before sending.
+- Missing or invalid phone numbers create failed non-retryable notification logs.
+- Use backend-owned fixed message templates for V1.
+- Message content only includes customer-safe shipment information such as tracking number, public tracking link/status, and configured contact path.
 
 **Why this is needed in V1**
-- Notifications keep customers informed and reduce manual follow-up.
-- Logs make provider failure visible without blocking operations.
+- WhatsApp and SMS keep receiver customers informed and reduce manual follow-up for agents and admins.
+- A provider-ready backend lets the system integrate real messaging services without binding the MVP plan to one vendor.
+- Customer messages must be reliable enough to observe and retry, but not so tightly coupled that messaging failures break shipment operations.
 
 **Acceptance signal**
-- Updating shipment to delivered creates a delivered notification log.
+- Updating shipment to delivered creates a receiver customer WhatsApp notification attempt and, when WhatsApp cannot be used, an SMS fallback attempt.
+
+### Feature: Notification logs, retries, and failure handling
+
+**V1 behavior**
+- Store notification logs for every WhatsApp and SMS attempt.
+- Each attempt records shipment, event type, recipient role, recipient phone, channel, provider name, provider message ID when available, status, retry count, error code/message, and timestamps.
+- Retry only retryable failures such as provider timeout, temporary provider outage, or retryable rate limit.
+- Do not retry missing phone, invalid phone, disabled provider, missing template, or permanent provider rejection.
+- Exhausted failures remain visible to admin in notification logs.
+- Do not rollback shipment creation, status updates, delivery outcomes, fee capture/release, or proof uploads when messaging fails.
+
+**Why this is needed in V1**
+- Logs make provider failure visible without blocking operations.
+- Retry boundaries prevent duplicate or pointless messages.
+- Admins need enough detail to troubleshoot failed customer messaging without seeing provider secrets.
+
+**Acceptance signal**
+- A simulated WhatsApp provider failure creates a failed or retryable notification log and does not break the shipment update or related fee operation.
 
 ## Analytics And Reporting APIs
 
