@@ -51,16 +51,18 @@ The web app is online-first. It should assume an active backend connection and s
 - Filter by status, agent, driver, governorate, and date.
 - Open a shipment detail page or modal.
 - Show full shipment timeline.
-- Show sender, receiver, destination, address, value, weight, service type, agent, assigned driver, and current status.
+- Show sender, receiver, destination, address, value, weight, service type, prepaid flag, agent, assigned driver, and current status.
+- Show QR/public tracking link for official shipments.
 - Allow admin to update status only through valid V1 transitions.
 
 **Why this is needed in V1**
 - Shipments are the central entity of the whole system.
 - Admins need a trusted source of truth when customers, agents, or drivers report issues.
 - Filtering by status and role is required for daily operations, not just analytics.
+- Admins need to distinguish operational shipment status from the simple paid/not-paid shipment flag.
 
 **Acceptance signal**
-- Admin can find a shipment, inspect its timeline, and see the same status that customer tracking returns.
+- Admin can find a shipment, inspect its timeline, see whether it is `مدفوع` or `غير مدفوع`, and see the same operational status that customer tracking returns.
 
 ### Feature: Web Shipment Creation
 
@@ -68,18 +70,23 @@ The web app is online-first. It should assume an active backend connection and s
 - Admin can create a new shipment from the web.
 - Agent can create a new shipment from the agent web dashboard.
 - Required fields match mobile shipment creation.
+- User can mark a simple paid checkbox.
+- Checked means `مدفوع`.
+- Unchecked means `غير مدفوع` and payment is expected from the receiver side.
 - Shipment creation requires enough available system credit for the selected agent.
 - If system credit is insufficient, show a clear failure and do not show an official tracking number.
 - Backend returns the official tracking number.
+- Backend returns QR/public tracking link for the official shipment.
 - Created shipment starts in `received`.
 
 **Why this is needed in V1**
 - Agents primarily use mobile, but web creation is still useful for office users and operational backfill.
 - Reusing the same backend creation flow validates consistency across web and mobile.
 - Web users need immediate feedback when a shipment cannot become official because the agent needs more system credit.
+- The paid checkbox tells drivers and agents whether delivery money has already been paid.
 
 **Acceptance signal**
-- A shipment created from web appears in admin lists, agent lists, public tracking, and the selected agent's fee history.
+- A shipment created from web appears in admin lists, agent lists, public tracking, QR tracking, and the selected agent's fee history with the selected prepaid value.
 
 ### Feature: Driver Assignment
 
@@ -144,7 +151,7 @@ The web app is online-first. It should assume an active backend connection and s
 **Why this is needed in V1**
 - Agents recharge outside the app through company bank or exchange accounts.
 - Admin needs a simple screen to record confirmed payments and correct mistakes without editing old ledger records.
-- The business depends on prepaid system credit before shipments become official.
+- The business depends on system credit before shipments become official.
 
 **Acceptance signal**
 - Admin can add credit for an agent, then that agent can create official shipments until available credit is no longer enough for the fixed shipment fee.
@@ -172,7 +179,7 @@ The web app is online-first. It should assume an active backend connection and s
 - Show total agent system credit.
 - Show reserved system credit.
 - Show captured shipment fee totals.
-- Show commission earned separately from prepaid system credit.
+- Show commission earned separately from system credit.
 - Filter by date and agent.
 - Show system credit history and fee history.
 - Show simple commission rows tied to shipments.
@@ -180,7 +187,7 @@ The web app is online-first. It should assume an active backend connection and s
 **Why this is needed in V1**
 - Agent commissions are part of the current business model and prototype.
 - System credit is part of the core pay-as-you-use business model.
-- Finance does not need to be advanced in V1, but agents and admins need a shared view of prepaid credit, captured fees, and earned commissions.
+- Finance does not need to be advanced in V1, but agents and admins need a shared view of system credit, captured fees, and earned commissions.
 - Basic financial visibility helps validate operational adoption.
 
 **Acceptance signal**
@@ -236,8 +243,11 @@ The web app is online-first. It should assume an active backend connection and s
 
 **V1 behavior**
 - Agent can create a shipment from web using the same required fields as mobile.
+- Agent can check or uncheck a paid checkbox.
+- Checked shows `مدفوع`; unchecked shows `غير مدفوع`.
 - Agent sees a clear insufficient-credit message if available system credit cannot cover the fixed shipment fee.
 - Backend returns official tracking number immediately.
+- Backend returns QR/public tracking link for the printable receipt or label.
 - Shipment appears in agent and admin dashboards.
 - Shipment creation is blocked until admin adds enough system credit.
 
@@ -245,15 +255,18 @@ The web app is online-first. It should assume an active backend connection and s
 - Some agents may work from offices with stable internet.
 - Web creation gives a simpler path for support and training.
 - Agents need to understand when a shipment failed because credit must be added before it can become official.
+- Agents need a quick way to mark whether delivery money was already paid.
 
 **Acceptance signal**
-- Agent-created web shipment follows the same validation, fee reservation, and event creation as mobile-created shipments.
+- Agent-created web shipment follows the same prepaid checkbox validation, QR generation, fee reservation, and event creation as mobile-created shipments.
 
 ### Feature: My Shipments
 
 **V1 behavior**
 - Agent can list, search, and filter their shipments.
 - Agent can open shipment timeline.
+- Agent can see whether each shipment is `مدفوع` or `غير مدفوع`.
+- Agent can open or print the QR/public tracking link after shipment is official.
 - Agent can see delivery outcome once completed.
 
 **Why this is needed in V1**
@@ -261,7 +274,7 @@ The web app is online-first. It should assume an active backend connection and s
 - They need self-service visibility instead of calling admin.
 
 **Acceptance signal**
-- Agent can find a shipment they created and cannot find another agent's shipment.
+- Agent can find a shipment they created, see whether it is `مدفوع` or `غير مدفوع`, and cannot find another agent's shipment.
 
 ### Feature: Agent Analytics, System Credit, And Commissions
 
@@ -284,15 +297,32 @@ The web app is online-first. It should assume an active backend connection and s
 **V1 behavior**
 - Customer enters tracking number without logging in.
 - Page returns safe shipment status and timeline.
+- Page can show safe prepaid wording such as `مدفوع` or `غير مدفوع`.
 - Page hides private operational fields such as system credit, shipment fee records, commission earned, internal IDs, admin notes, and sync metadata.
 - Invalid tracking number returns a clear not-found state.
+- QR scan opens the same public tracking page as manual tracking lookup.
 
 **Why this is needed in V1**
 - Tracking is the customer-facing proof that the system works.
 - Public tracking reduces customer calls to agents and admins.
 
 **Acceptance signal**
-- A real tracking number shows current status and timeline, while private fields are absent from the response.
+- A real tracking number or QR scan shows current status, safe prepaid wording, and timeline, while private fields are absent from the response.
+
+### Feature: Printable Shipment Receipt And QR
+
+**V1 behavior**
+- Official shipments can show a printable receipt or label with tracking number and QR code.
+- QR code points to the public tracking URL.
+- Offline temporary shipments do not show official QR until backend sync succeeds.
+- QR does not expose system credit, commission, internal data, or private shipment fields directly.
+
+**Why this is needed in V1**
+- Agents need a practical way to hand customers a trackable shipment receipt.
+- QR tracking reduces typing errors and keeps tracking tied to the official backend shipment.
+
+**Acceptance signal**
+- A printed receipt QR opens the safe public tracking page for the official shipment.
 
 ### Feature: Contact Actions
 

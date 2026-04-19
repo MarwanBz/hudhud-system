@@ -38,10 +38,12 @@ The backend is the system of record. It must enforce rules that frontend and mob
   - Mobile sync items.
   - Notification logs.
   - Basic commission records.
+  - Shipment prepaid flag.
   - Agent system credit balances.
   - System credit ledger entries.
   - Shipment fee reservations, captures, and releases.
   - Admin credit and correction records.
+  - QR tracking references for official shipments.
 - Use stable IDs and timestamps.
 
 **Why this is needed in V1**
@@ -50,11 +52,11 @@ The backend is the system of record. It must enforce rules that frontend and mob
 - System credit must be ledger-backed because it controls whether agents can create official shipments.
 
 **Acceptance signal**
-- Restarting the application does not lose shipments, events, sync records, system credit balances, or ledger history.
+- Restarting the application does not lose shipments, events, sync records, prepaid flags, system credit balances, QR tracking references, or ledger history.
 
 ## Agent System Credit And Shipment Fees
 
-### Feature: Prepaid system credit ledger
+### Feature: System credit ledger
 
 **V1 behavior**
 - Define one backend constant: `SYSTEM_SHIPMENT_FEE_YER = 500`.
@@ -68,7 +70,7 @@ The backend is the system of record. It must enforce rules that frontend and mob
 - Drivers cannot view agent credit or fee history.
 
 **Why this is needed in V1**
-- Hudhud charges agents per official shipment, so shipment creation must be backed by prepaid credit.
+- Hudhud charges agents per official shipment, so shipment creation must be backed by system credit.
 - Agents recharge outside the app through company bank or exchange accounts, and admin needs a simple way to record confirmed payments.
 - Separating system credit from commission earned prevents confusing money agents paid into the system with money agents earned from the system.
 
@@ -94,6 +96,46 @@ The backend is the system of record. It must enforce rules that frontend and mob
 **Acceptance signal**
 - A delivered shipment consumes the reserved fee once, while a final non-delivered shipment returns the reservation to available credit.
 
+## Shipment Prepaid Flag
+
+### Feature: Paid checkbox on shipment creation
+
+**V1 behavior**
+- Every shipment has one boolean field: `prepaid`.
+- `prepaid = true` means the delivery price has already been paid and the UI shows `مدفوع`.
+- `prepaid = false` means the delivery price has not been paid yet and the UI shows `غير مدفوع` or receiver-pays wording.
+- The `prepaid` flag is selected during shipment creation.
+- `مدفوع` refers to the delivery/shipping price, not the item value inside the package.
+- `prepaid` is not a shipment lifecycle status.
+- `prepaid` does not change agent system credit, shipment fee reservation, shipment fee capture, or commission earned.
+
+**Why this is needed in V1**
+- Agents need a simple checkbox to mark whether the shipment delivery price is already paid.
+- The system must not confuse this checkbox with Hudhud's agent system credit or platform fee.
+
+**Acceptance signal**
+- Agent can create one shipment marked `مدفوع` and another marked `غير مدفوع`, and neither changes the agent system credit ledger except for the normal platform fee reservation.
+
+## QR Tracking Code
+
+### Feature: Official shipment QR tracking
+
+**V1 behavior**
+- Every official shipment has QR tracking after backend generates the official tracking number.
+- QR payload is the public tracking URL for the shipment.
+- QR does not encode raw private shipment data, phone numbers, addresses, payment amounts, system credit data, or ledger IDs.
+- Offline temporary shipments do not receive an official QR until sync succeeds and the backend returns the official tracking number.
+- If official shipment creation fails because agent system credit is insufficient, no official tracking number or QR is created.
+- QR scans open public tracking and follow the same privacy and rate-limit rules as normal public tracking.
+- QR scan does not update shipment status, prepaid flag, or agent system fee status in V1.
+
+**Why this is needed in V1**
+- QR makes printed shipment receipts and labels easier to track without adding a separate scan-to-update workflow.
+- Keeping QR read-only avoids mixing public tracking with warehouse scanning, delivery proof, or payment workflows.
+
+**Acceptance signal**
+- Scanning a shipment QR opens the same safe public tracking view as entering the tracking number manually.
+
 ## Shipment Management
 
 ### Feature: Shipment Creation API
@@ -101,8 +143,10 @@ The backend is the system of record. It must enforce rules that frontend and mob
 **V1 behavior**
 - Accepts shipment creation from web and mobile sync.
 - Validates required fields.
+- Requires `prepaid` as a boolean field.
 - Requires enough available system credit for the selected agent before creating an official shipment.
 - Generates official tracking number.
+- Makes QR tracking available from the official public tracking URL.
 - Creates initial shipment event.
 - Reserves `SYSTEM_SHIPMENT_FEE_YER` from the selected agent's system credit.
 - Calculates initial commission record if applicable.
@@ -114,9 +158,10 @@ The backend is the system of record. It must enforce rules that frontend and mob
 - Shipment creation is the core transaction.
 - Idempotency prevents duplicate shipments when mobile retries.
 - System credit enforcement ensures every official shipment can pay the platform fee.
+- The prepaid flag tells agents, drivers, and admins whether the delivery price was already paid.
 
 **Acceptance signal**
-- Replaying the same mobile create request returns the same created shipment and does not reserve the system fee twice.
+- Replaying the same mobile create request returns the same created shipment, same prepaid value, same QR tracking reference, and does not reserve the system fee twice.
 
 ### Feature: Shipment State Machine
 
@@ -162,6 +207,20 @@ The backend is the system of record. It must enforce rules that frontend and mob
 **Acceptance signal**
 - Assigned shipment appears only for the assigned driver.
 
+### Feature: Prepaid-aware delivery outcome
+
+**V1 behavior**
+- Driver and agent views show whether the shipment is `مدفوع` or `غير مدفوع`.
+- Delivery outcome does not create a separate payment record in V1.
+- If `prepaid = false`, the UI can remind the driver or agent that receiver-side payment is expected, but backend only stores the boolean flag.
+
+**Why this is needed in V1**
+- Drivers and agents need to see whether payment is expected from the receiver.
+- V1 keeps this as a simple shipment flag instead of a financial workflow.
+
+**Acceptance signal**
+- A delivered shipment keeps its original `prepaid` value and does not create any extra payment workflow.
+
 ## Mobile Sync
 
 ### Feature: Mobile Bootstrap API
@@ -194,15 +253,17 @@ The backend is the system of record. It must enforce rules that frontend and mob
   - Retryable server error.
 - Allows offline shipments to be saved locally, but creates official shipments only when server-side system credit can reserve the fee.
 - Returns a failed item result for insufficient system credit without creating a duplicate shipment or fee reservation.
+- Preserves the `prepaid` value from offline shipment creation during sync.
+- Returns official QR tracking only after sync creates the official shipment and tracking number.
 - Does not let one bad item block the whole batch.
 
 **Why this is needed in V1**
 - Field users can generate multiple offline actions.
 - Independent per-item sync reduces data loss and support work.
-- Offline mobile must not bypass prepaid system credit enforcement.
+- Offline mobile must not bypass system credit enforcement.
 
 **Acceptance signal**
-- A batch with one invalid or insufficient-credit item still syncs valid items and does not create duplicate reservations on retry.
+- A batch with one invalid or insufficient-credit item still syncs valid items and does not create duplicate reservations, duplicate shipments, or duplicate QR references on retry.
 
 ## Delivery Proof
 
@@ -326,15 +387,19 @@ The backend is the system of record. It must enforce rules that frontend and mob
 **V1 behavior**
 - Lookup by tracking number.
 - Return safe shipment status and timeline.
+- Return safe prepaid wording:
+  - `مدفوع` when `prepaid = true`.
+  - `غير مدفوع` when `prepaid = false`.
+- Return the public tracking URL used by the QR code when needed.
 - Apply rate limiting.
-- Avoid exposing private fields.
+- Avoid exposing private fields, system credit, commission, ledger IDs, or internal corrections.
 
 **Why this is needed in V1**
 - Customer tracking is part of the core product promise.
 - Public endpoints need abuse protection from the first release.
 
 **Acceptance signal**
-- Public tracking response passes a privacy field audit.
+- Public tracking response passes a privacy field audit and QR scan returns the same safe response.
 
 ## Audit And Observability
 
@@ -346,6 +411,7 @@ The backend is the system of record. It must enforce rules that frontend and mob
   - Status update.
   - Driver assignment.
   - Delivery outcome.
+  - Prepaid flag changes.
   - Agent/driver activation changes.
   - Sync conflict resolution.
   - Admin system credit additions.
@@ -361,7 +427,7 @@ The backend is the system of record. It must enforce rules that frontend and mob
 - Money-affecting actions require a clear actor, timestamp, reason, and related shipment or agent.
 
 **Acceptance signal**
-- Admin can trace who changed a shipment status, who changed agent system credit, and when each fee was reserved, captured, or released.
+- Admin can trace who changed a shipment status, who changed the prepaid flag, who changed agent system credit, and when each fee was reserved, captured, or released.
 
 ### Feature: Basic Operational Logs
 

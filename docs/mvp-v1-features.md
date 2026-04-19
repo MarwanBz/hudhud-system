@@ -9,7 +9,9 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - **Web is the control center.** Admins need connected dashboards, filters, assignment tools, reports, and exception handling.
 - **V1 should complete the shipment lifecycle.** A shipment should move from creation to delivery, rejection, or postponement.
 - **Every operational update should be auditable.** Status changes, sync retries, delivery proof, and notification attempts need a trace.
-- **Agents must maintain prepaid system credit.** The system charges agents per official shipment, so credit and fee history are core business records.
+- **Agents must maintain system credit.** The system charges agents per official shipment, so credit and fee history are core business records.
+- **Shipment paid state is a simple checkbox.** `مدفوع` is a boolean shipment flag, while system credit pays Hudhud's platform fee.
+- **QR is for safe tracking, not status mutation.** QR codes should open public tracking and must not change shipment status or the paid flag in V1.
 - **Avoid advanced features that do not protect the core flow.** Maps, route optimization, customer accounts, branch-manager role separation, and advanced finance can wait.
 
 ## Scope By Surface
@@ -26,27 +28,28 @@ This file captures cross-surface product principles, end-to-end workflows, share
 
 1. Agent signs in on web or mobile.
 2. Agent submits shipment while online.
-3. Backend validates fields.
-4. Backend verifies the agent has enough available system credit.
-5. Backend creates shipment and tracking number.
-6. Backend reserves the fixed system shipment fee from the agent's system credit.
-7. Backend creates `received` event.
-8. Backend creates a WhatsApp notification attempt for the receiver customer and an SMS fallback attempt when WhatsApp cannot be used.
-9. Shipment appears in admin dashboard, agent dashboard, and public tracking.
+3. Agent checks or unchecks the paid checkbox.
+4. Backend validates fields and the `prepaid` boolean.
+5. Backend verifies the agent has enough available system credit.
+6. Backend creates shipment, tracking number, and QR tracking URL.
+7. Backend reserves the fixed system shipment fee from the agent's system credit.
+8. Backend creates `received` event.
+9. Backend creates a WhatsApp notification attempt for the receiver customer and an SMS fallback attempt when WhatsApp cannot be used.
+10. Shipment appears in admin dashboard, agent dashboard, public tracking, and QR tracking.
 
 ### Offline Agent Shipment Creation
 
 1. Agent signs in and bootstraps data while online.
 2. Agent loses connection.
-3. Agent creates shipment on mobile.
+3. Agent creates shipment on mobile with the paid checkbox value.
 4. App stores pending sync item with temporary receipt ID.
 5. Connection returns.
 6. App syncs queued item with idempotency key.
-7. Backend verifies real server-side system credit can reserve the fee.
-8. If credit is sufficient, backend creates official shipment and tracking number.
+7. Backend validates the `prepaid` boolean and verifies real server-side system credit can reserve the fee.
+8. If credit is sufficient, backend creates official shipment, tracking number, and QR tracking URL.
 9. Backend reserves the fixed system shipment fee from the agent's system credit.
-10. App replaces temporary receipt with official tracking number.
-11. If credit is insufficient, sync returns a failed item and the shipment remains unofficial on the device.
+10. App replaces temporary receipt with official tracking number and official QR.
+11. If credit is insufficient, sync returns a failed item and the shipment remains unofficial on the device with no official QR.
 
 ### Admin Driver Assignment
 
@@ -62,15 +65,16 @@ This file captures cross-surface product principles, end-to-end workflows, share
 1. Driver bootstraps assigned shipments while online.
 2. Driver loses connection.
 3. Driver opens assigned shipment.
-4. Driver submits delivered/rejected/postponed with reason and photo.
-5. App stores outcome and proof photo locally.
-6. Connection returns.
-7. App uploads proof and syncs outcome.
-8. Backend updates status, stores proof, creates event, and triggers WhatsApp-first/SMS-fallback customer messaging.
-9. If the outcome is delivered, backend captures the reserved system shipment fee.
-10. If the shipment is finally closed without delivery, backend releases the reserved fee.
-11. If the shipment is postponed, backend keeps the fee reserved.
-12. Admin, agent, and public tracking show updated status.
+4. Driver reviews whether shipment is `مدفوع` or `غير مدفوع`.
+5. Driver submits delivered/rejected/postponed with reason and photo.
+6. App stores outcome and proof photo locally.
+7. Connection returns.
+8. App uploads proof and syncs outcome.
+9. Backend updates status, stores proof, preserves the paid flag, creates event, and triggers WhatsApp-first/SMS-fallback customer messaging.
+10. If the outcome is delivered, backend captures the reserved system shipment fee.
+11. If the shipment is finally closed without delivery, backend releases the reserved fee.
+12. If the shipment is postponed, backend keeps the fee reserved.
+13. Admin, agent, and public tracking show updated status.
 
 ### Sync Conflict Review
 
@@ -99,10 +103,12 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - Notification jobs.
 - SMS and WhatsApp notification attempts.
 - Commission records.
+- Shipment prepaid flag.
 - Agent system credit balances.
 - System credit ledger entries.
 - Shipment fee reservations.
 - Admin credit and correction records.
+- QR tracking URLs or derived QR references.
 
 ### Core APIs
 
@@ -119,6 +125,7 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - `POST /mobile/sync`
 - `POST /delivery-outcomes`
 - `POST /files/proof-photos`
+- `GET /shipments/:id/qr-code`
 - `POST /admin/agents/:agentId/system-credit`
 - `POST /admin/agents/:agentId/system-credit/corrections`
 - `GET /admin/agents/:agentId/system-credit`
@@ -145,11 +152,14 @@ This file captures cross-surface product principles, end-to-end workflows, share
 - Payment provider integration.
 - Per-agent or per-route dynamic pricing.
 - Advanced accounting settlement.
+- Refund workflows.
 - Advanced report builder.
 - Inbound WhatsApp chat.
 - Customer replies or support chat.
 - Campaign or bulk messaging.
 - Customer notification preferences.
+- Scan-to-update-status workflows.
+- Warehouse or inventory QR scanning.
 - Admin notification template editor.
 - Per-agent notification templates.
 - Multi-provider notification routing.
@@ -167,6 +177,13 @@ The MVP is acceptable when all of the following are true:
 - Driver can view assigned shipments on mobile.
 - Driver can submit delivery, rejection, or postponement outcome with reason/photo and sync later.
 - Public tracking shows safe shipment status and timeline by tracking number.
+- Official shipments expose QR tracking that opens safe public tracking.
+- Offline temporary shipments do not receive official QR until backend sync succeeds.
+- Every official shipment stores a boolean `prepaid` value.
+- `prepaid = true` shows `مدفوع`.
+- `prepaid = false` shows `غير مدفوع`.
+- The prepaid flag is separate from operational shipment status.
+- The prepaid flag does not change agent system credit or Hudhud platform fee ledger.
 - WhatsApp-first/SMS-fallback customer messages are attempted for key shipment events and logged.
 - Receiver customer is the required V1 notification recipient.
 - Messaging failures do not block shipment creation, status updates, delivery outcomes, fee capture/release, or proof uploads.
@@ -188,7 +205,7 @@ The MVP is acceptable when all of the following are true:
 
 ## Recommended Delivery Order
 
-1. Backend foundation: auth, RBAC, database schema, system credit ledger, shipment creation, shipment events.
+1. Backend foundation: auth, RBAC, database schema, system credit ledger, prepaid shipment flag, shipment creation, shipment events.
 2. Web admin shipment management and agent web shipment creation.
 3. Public tracking endpoint and page.
 4. Mobile bootstrap and local sync queue.
